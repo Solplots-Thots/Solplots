@@ -1,0 +1,204 @@
+---
+title: "Eliot Jacobson's Plot of North Atlantic Sea Temperature Anomaly"
+author: "Max Fortune"
+format: html
+editor: visual
+---
+
+## Image of Plot
+
+![](NorthAtlanticAnomaly.jpg)
+
+## Tweet
+
+Professor Eliot Jacobson, PhD, "@EliotJacobson", is the author of a series of plots shared on the site formerly known as Twitter. The most recent plot be seen here: <https://twitter.com/EliotJacobson/status/1686395541679415296?s=20>
+
+On June 10, 2023, "@EliotJacobson" shared the plot for the first time, and it went viral. Racking up over three million views, Professor Jacobson suddenly become a prominent climate change communicator. While there was a great variety of response, some of the reply tweets (that appear when I look at the tweet as the time of writing this) asked why the data did not look similar to the figures he depicted. Through a series of reply and update tweets, along with media appearances, Professor Jacobson has explained his reasoning many times over.
+
+In this document, I'll explain how to create this plot using R and ggplot2.
+
+## Data Source
+
+Professor Jacobson is very kind to have included the [link](climatereanalyzer.org/clim/sst_daily/json/oisst2.1_natlan1_sst_day.json) to the data in his plot. And in a reply tweet as well.
+
+The data is sourced from the [Climate Reanalyzer](https://climatereanalyzer.org/about/), a website platform developed by the Climate Change Institute at the University of Maine. You can find lots of visualizations and data on climate and weather forecast models. Important plots for studying the phenomenon that is Earth's climate during the anthropocene.
+
+## Author
+
+Eliot Jacobson, PhD is a retired mathematics and computer science professor who has been active in the climate change activism space on Twitter. He has developed a following of over 58,000 by sharing many plots depicting sea surface temperatures and polar ice extents.
+
+Dr. Jacobson also has his own [website](https://climatecasino.net/2021/11/a-little-bit-about-me/) where he also shares tips on how to gamble. I appreciate in his autobiography that he explains his qualifications for discussing and plotting data pertaining to climate change for it displays his intent to firmly establish himself as NOT an expert in this field. Yet he is still eager to use his skills to participate in the media campaign to the best of his abilities. In this [interview](https://www.youtube.com/watch?v=bsOlvXXiXRY&t=1246s) you can listen to him explain his though process.
+
+Thank you Dr. Jacobson for being a plot thot.
+
+## Plotting in R
+
+As Dr. Jacobson has been saying, the data present in the link is not the exact data that gets plotted. We're going to have to do some work to it to get to the plot.
+
+The biggest thing we must recognize is that the data published on the Climate Reanalyzer website shows temperature readings in degrees Celsius. Dr. Jacobson plotted each day's temperature reading as a function of its distance from the daily average temperature observed between 1991-2020. What that means is if the reading for January 1, 2023 was 20.78, and if the average of all the readings on January 1 between 1991 and 2020 was 20.30, that means the data point for January 1, 2023 on this plot would have a y-axis value of 0.40.
+
+This tutorial will show you how to go from data source to plot using R + ggplot2.
+
+### Packages
+
+We need:
+
+-   tidyverse (for ggplot2 and friends)
+
+-   jsonlite (for reading in json files)
+
+```{r}
+
+# install.packages("tidyverse")
+# install.packages("jsonlite")
+
+library(tidyverse)
+library(jsonlite)
+```
+
+### Reading in temperature data
+
+Dr. Jacobson provided the [link](climatereanalyzer.org/clim/sst_daily/json/oisst2.1_natlan1_sst_day.json) to the data, which is stored as a json array. Inside the array are objects that relate to each year (1981-present). Within each object is the name (year) and another array containing each recorded temperature observed at 10am for that day of the year.
+
+We can use the `jsonlite::fromJSON()` function to read in the JSON file.
+
+```{r}
+
+link <- "https://climatereanalyzer.org/clim/sst_daily/json/oisst2.1_natlan1_sst_day.json"
+raw <- jsonlite::fromJSON(link)
+
+raw
+```
+
+### Cleaning
+
+R reads in this data as a data frame, with the `name` column referring to year and the `data` column referring to a vector of temperature readings. This means we have a nested data frame that needs to be un-nested. Let's also turn this into a tibble while we're at it.
+
+```{r}
+
+raw <- 
+  fromJSON(link) |> 
+  as_tibble() |> 
+  unnest(data) 
+
+raw
+```
+
+Well, the `name` column has more than just years in it.
+
+```{r}
+unique(raw$name)
+```
+
+This explains why its class is character. This additional data ("1982-2011 mean", "plus 2σ", "minus 2σ") help give context but they aren't needed for this plot, so we can filter these rows out. We should also filter out rows for "1981" since not all the data is there for that year.
+
+Another thing we need to do is include an additional variable of data. Professor Jacobson plotted day of the year on the x-axis of his plot, but that wasn't explicitly included in the source. To output this column, we can group by each year in the data and then mutate a unique rank, in this case, the order in which they appear within the group. This translates to the day of the year for each temperature record.
+
+Finally, we should also rename the columns so that `name` shows year and `data` shows temperature (as we are not done mutating variables).
+
+The previous steps can be condensed into the following code chain:
+
+```{r}
+
+df <- 
+  raw |> 
+  filter(!name %in% c("1981", 
+                      "1982-2011 mean", 
+                      "plus 2σ",
+                      "minus 2σ")) |>        # filter out rows we don't want
+  group_by(name) |>                          # establish groups
+  mutate(elapsed_days = row_number()) |>     # mutate a rank for each elapsed day
+  ungroup() |>                               # remove groups
+  rename(year = name, surface_temp = data)   # rename columns
+
+df
+```
+
+### Analysis
+
+The values we need to calculate are each day's temperature reading as a function of its distance from the daily average temperature observed between 1991-2020. That means two additional columns to mutate:
+
+1.  Mean surface temperature by day of year (mean_surface_temp)
+
+2.  Difference between mean and observed temperature (diff_surface_temp)
+
+#### Mean surface temp
+
+To calculate mean surface temp, we can group by the `elapsed_days` column we mutated in the last step and then summarize `surface_temp` by mean. Remember, we're only using data from 1991-2020 to calculate these means.
+
+```{r}
+
+mu <- 
+  df |> 
+  filter(year %in% 1991:2020) |>                    # filter for years we are interested in
+  group_by(elapsed_days) |>                         # establish groups
+  summarize(mean_surface_temp = mean(surface_temp)) # summarize by returning the mean surface temp for each group
+
+mu
+```
+
+The object we created to store the means, `mu`, now needs to be joined back into our data so that the differences can be calculated.
+
+```{r}
+
+df <-
+  df |> 
+  left_join(mu)
+
+df
+```
+
+#### Difference surface temperature
+
+The last variable we need is simply the difference between `surface_temp` and `mean_surface_temp`.
+
+```{r}
+
+prep <-
+  df |> 
+  mutate(diff = surface_temp - mean_surface_temp)
+
+prep
+```
+
+### Building the plot
+
+When building a line plot using ggplot2, we must remember that we are plotting points grouped by a certain variable (in our case, `year`) with `elapsed_days` on the x-axis and `diff` on the y-axis.
+
+Here is a base plot:
+
+```{r}
+p <- 
+  prep |> 
+  ggplot(aes(x = elapsed_days, y = diff, group = year, color = diff)) +
+  geom_line()
+
+p
+```
+
+We can change the color scale using `scale_color_gradient2` to establish low, mid and high range colors. We can use dark red for high, white for mid, and dark blue for low.
+
+```{r}
+p <-
+  p +
+  scale_color_gradient2(low = "darkblue",
+                        mid = "white",
+                        high = "darkred")
+
+p
+```
+
+Add some labels, change the theme and remove some labels can be done with the following:
+
+```{r}
+p <- 
+  p +
+    labs(title = "North Atlantic Sea Surface Temperature Anomaly: 1982-2023",
+       subtitle = "Difference from 1991-2020 Mean",
+       caption = "Climate Reanalyzer\nClimate Change Institute | University of Maine",
+       x = "Day of year",
+       y = "Difference (\u00B0C)") +
+  theme_minimal()
+
+p
+```
