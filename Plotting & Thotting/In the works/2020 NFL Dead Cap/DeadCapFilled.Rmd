@@ -1,0 +1,168 @@
+---
+title: "NFLDeadCap"
+author: "Peter Fortunato"
+date: "2/12/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+First things first is that we need to load in the `tidyverse` library. We also need the `readxl` library as well. Let's also set `options(scipen = 999)` so that we don't get scientific notation in our plots.
+
+```{r}
+library(tidyverse)
+library(readxl)
+
+options(scipen = 999)
+```
+
+# 1. Reading in Data
+
+The link to the data can be found here: https://www.sportsvizsunday.com/monthlychallenge. Scroll down until you see "FEBRUARY 2021-NFL SALARY CAP" and click on the link to download the data. Make sure you put the file in your project folder so that you don't have to retrieve it from a different directory.
+
+```{r}
+df <- read_excel("Feb 2021 SportsVizSunday.xlsx", sheet = 2)
+```
+
+This is an extensive data set that contains data of every single player on an NFL roster between 2018 and 2025. We are only looking at 2020 data and players that took up dead cap space for each team.
+
+Dead cap refers to the amount of money each NFL team plays to players that no longer are on the team's roster. But there are many other stories that can be uncovered from this data set, and I encourage you all try your hand at finding a story different from mine.
+
+# 2. Prepping Data
+
+Let's take a look at one of the columns called `Cap Hit`.
+
+```{r}
+df$`Cap Hit` %>% 
+  str()
+```
+
+It is currently a character, but this value represents the amout of money from a team's cap owed to a player for a certain year. This needs to be numeric, so let's change it.
+
+```{r}
+df$`Cap Hit` <- as.numeric(df$`Cap Hit`)
+```
+
+Now, there's one particular player that causes problem in this data set, and his name is Durval Neto. Let's look at the problem.
+
+```{r}
+df %>%
+  filter(Player == "Durval Neto")
+```
+
+There is an `N/A` character in for his `Cap Hit`. How many rows in `Cap Hit` are missing AND where `Cap Type` == "Dead" AND are in the year 2020?
+
+```{r}
+df %>% 
+  filter(is.na(`Cap Hit`) & `Cap Type` == "Dead" & Year == 2020)
+```
+
+It's Durval Neto. We're going to have to filter him out of the plot.
+
+# 3. Plotting
+
+This first piece of code will modify our data frame so that includes just the values that we want. We will be filtering the data to just include data from 2020, only players that represent dead cap for each team, and not Durval Neto.
+
+We will also be doing a group-wise summary of the data where we will group by Franchise (each NFL team) and summarize by taking the sum of `Cap Hit` and storing in the new column named `total_dead_cap`. 
+
+Finally, we will mutate a new variable that says whether or not a Franchise made the 2020 playoffs.
+
+```{r}
+p <- df %>%
+  filter(Year == 2020 & `Cap Type` == "Dead" &
+           Player != "Durval Neto") %>%
+  group_by(Franchise) %>%
+  summarize(total_dead_cap = sum(`Cap Hit`)) %>% 
+  mutate(playoffs = ifelse(
+    Franchise %in% c("Tampa Bay Buccaneers", "Green Bay Packers",
+                     "Buffalo Bills", "Pittsburgh Steelers", 
+                     "Seattle Seahawks", "Cleveland Browns",
+                     "Chicago Bears", "Kansas City Chiefs",
+                     "Indianapolis Colts", "New Orleans Saints",
+                     "Baltimore Ravens", "Washington Football Team",
+                     "Tennessee Titans", "Los Angeles Rams"),
+    TRUE, FALSE
+  ))
+
+view(p)
+```
+
+Next, we will pipe this resulting data frame into ggplot and create the base plot. We will map `Franchise` reorderd by `total_dead_cap` to the x-axis, `total_dead_cap`/1000000 to the y-axis, and `playoffs` to the `fill`. 
+
+We will then add the `geom_col()` layer and set `color = "black"` to give each bar a black outline.
+
+```{r}
+p <- p %>% 
+  ggplot(aes(x = reorder(Franchise, total_dead_cap),
+             y = total_dead_cap/1000000,
+             fill = playoffs)) +
+  geom_col(color = "black")
+
+p
+```
+
+
+```{r}
+p <- p +
+  scale_fill_brewer(labels = c("Missed playoffs",
+                                 "Made playoffs"),
+                    palette = "Pastel1") +
+  scale_y_continuous(breaks = c(0, 10, 20, 30, 40, 50),
+                     expand = c(0,0)) +
+  coord_flip()
+
+p
+  
+```
+
+Next, we're going to change all of the labels. 
+
+```{r}
+p <- p +
+  labs(y = "Total Dead Cap, Millions of $",
+       x = "",
+       title = "How Much Each NFL Team Paid\nPlayers not on Their Team",
+       subtitle = "NFL Teams by Total Dead Cap, 2020",
+       caption = "Sports Viz Sunday February Challenge")
+
+p
+```
+
+Now we will alter the theme of the plot. We will first give it `theme_classic()`.
+
+Then, within `theme()`, we will do the following: position the legend onto the plot, change the major vertical plot lines to be the color black and the linetype to be dotted, make the plot, panel, and legend background to be the color beige. The legend background will also get a black outline.
+
+We will then remove the legend title, change the plot's text to be of the Georgia family, and then make the plot's title to be bold.
+
+```{r}
+p <- p +
+  theme_classic() +
+  theme(
+    legend.position = c(.8, .5),
+    panel.grid.major.x = element_line(linetype = "dotted",
+                                      color = "black"),
+    legend.background = element_rect(color = "black",
+                                     fill = "beige"),
+    legend.title = element_blank(),
+    plot.background = element_rect(fill = "beige"),
+    panel.background = element_rect(fill = "beige"),
+    text = element_text(family = "Georgia"),
+    plot.title = element_text(face = "bold")
+  )
+
+p
+```
+
+The vertical axis labels look smooshed. We will fix that using `ggsave`.
+
+```{r}
+ggsave("dead_cap.png",
+       plot = p,
+       width = 5.49,
+       height = 5.49,
+       units = "in")
+```
+
+And that's it.

@@ -1,0 +1,85 @@
+---
+title: "AFRHIVTeens"
+author: "Peter Fortunato"
+date: "2/13/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Reading in the Data
+
+Let's read in the data, but before we do that, we need to load in the tidyverse library and set `options(scipen = 999)`.
+
+```{r}
+library(tidyverse)
+options(scipen = 999)
+```
+
+This data comes from the Makeover Monday Project. This is similar to the Tidy Tuesday project, and it is run by Eva Murray and Andy Kriebel. We will be reading in the data from a url link.
+
+```{r}
+df <- read.csv("https://query.data.world/s/ukvgbvp4zpb2ljqds4rlvodyfjvfwk", 
+               header=TRUE, 
+               stringsAsFactors=FALSE)
+```
+
+The data set contains information about the HIV rates among adolescents in African countries. Let's take a look at the data.
+
+```{r}
+df %>%
+  view()
+```
+
+The variables of interest to us are: `Year`, `Country`, `Sex`, and this long-winded variable name `Estimated.number.of.annual.new.HIV.infections`. 
+
+# 2. Prep
+
+We have several text annotations on the plot, so let's create some objects before we get to plotting so that our code can be as succinct as possible.
+
+```{r}
+country_x <- c(2002, 2010, 2000, 1995, 1999.1, 1995)
+country_y <- c(94000, 25000)
+```
+
+
+# 2. Plotting
+
+The base plot we will make will map `Year` to the x-axis, `Estimated.number.of.annual.new.HIV.infections` to the y-axis, `Sex` to both `color` and `alpha`, and then we need the interaction between `Country` and `Sex` mapped to `group`. By setting `Sex` to both `color` and `alpha`, we will be able to see the individual lines more clearly.
+
+Our goal is to create a line plot where each line represents the estimated number of annual new HIV infections by sex and country. If we didn't map the interaction to `group`, we would get a sawtooth pattern, which is not what we want.
+
+```{r}
+p <- df %>%
+  ggplot(aes(x = Year, 
+             y = Estimated.number.of.annual.new.HIV.infections,
+             color = Sex,
+             alpha = Sex,
+             group = interaction(Country, Sex))) +
+  geom_line()
+
+p
+```
+
+Now that we have our base plot, let's update the scales so that they can communicate the data more effectivel.
+
+For `color`, we will manaully map two colors (via hex codes) to the `Sex` variable.
+
+For `y`, we will adjust the limits and set `expand = c(0,0)`. For `x`, we will also adjust the limits and set `expand = c(0,0)`. I'm essentially readjusting the plotting are to my liking.
+
+For `alpha`, we will change the values so that one of the lines isn't almost completely transparent.
+
+```{r}
+p <- p +
+  scale_color_manual(values = c("#FFA561", "#618BFF")) +
+  scale_y_continuous(limits = c(-2000, 100000),
+                     expand = c(0, 0)) +
+  scale_x_continuous(expand = c(0, 0),
+                     limits = c(1989, 2021)) +
+  scale_alpha_manual(values = c(1, .5))
+
+p
+```
+
