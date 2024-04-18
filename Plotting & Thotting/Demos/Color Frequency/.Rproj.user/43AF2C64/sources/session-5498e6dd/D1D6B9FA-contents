@@ -338,6 +338,7 @@ p <-
   ) 
 
 p
+
   
 # Add the second geom layer to draw the text labels
 p <- 
