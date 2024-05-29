@@ -122,3 +122,4 @@ oni_years <-
     enso_type %in% c("Strong La Niña", "Moderate La Niña", "Weak La Niña") ~ "La Niña",
     TRUE ~ "El Niño"
   ))
+
